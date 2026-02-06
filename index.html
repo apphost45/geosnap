@@ -3,16 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoSnap Instant</title>
+    <title>GeoSnap Ultimate</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* v4.0 Instant Trigger - UI Optimized */
+        /* v5.0 Ultimate - Camera Switch Added */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Roboto', sans-serif; background: #000; }
         
         #camera-view {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1;
+            object-fit: cover; z-index: 1; transform: scaleX(1); /* Default Normal */
         }
+        /* Mirror the view only when using Front Camera */
+        .mirror-mode { transform: scaleX(-1) !important; }
 
         #overlay-layer {
             position: absolute; bottom: 0; left: 0; width: 100%;
@@ -38,29 +40,45 @@
         .loc-coords { font-size: 11px; color: #ccc; font-family: monospace; }
         .loc-date { font-size: 11px; color: #eebb00; font-weight: 500; margin-top: 2px; }
 
-        /* BUTTON STYLING */
+        /* CONTROLS CONTAINER */
         #controls {
             position: absolute; bottom: 130px; 
-            left: 50%; transform: translateX(-50%);
+            width: 100%; display: flex; justify-content: center; align-items: center;
             z-index: 3;
+            pointer-events: none; /* Let clicks pass through empty space */
         }
+
+        /* SNAP BUTTON */
         #snap-btn {
             width: 75px; height: 75px; border-radius: 50%;
             background: rgba(255,255,255,0.9); 
             border: 4px solid rgba(255,255,255,0.3);
-            cursor: pointer; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
             transition: background-color 0.1s, transform 0.1s;
-            -webkit-tap-highlight-color: transparent; /* Removes blue box on Android */
+            pointer-events: auto;
+            -webkit-tap-highlight-color: transparent;
         }
-        
-        /* The "Pink" state class */
         #snap-btn.flash-pink {
-            background-color: #FF007F !important; /* Hot Pink */
+            background-color: #FF007F !important;
             border-color: white !important;
             transform: scale(0.90);
         }
 
+        /* SWITCH CAMERA BUTTON */
+        #switch-btn {
+            position: absolute; right: 40px; /* Positioned to the right of center */
+            width: 50px; height: 50px;
+            background: rgba(0,0,0,0.5);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            color: white; font-size: 24px;
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer; pointer-events: auto;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #switch-btn:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
+
+        /* Permissions Modal */
         #perm-modal {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 20;
@@ -83,7 +101,7 @@
     <div id="perm-modal">
         <h2>⚠️ Location Needed</h2>
         <p>This app needs GPS to work.</p>
-        <button class="btn-retry" onclick="init()">Try Again</button>
+        <button class="btn-retry" onclick="startCamera()">Try Again</button>
     </div>
 
     <div id="overlay-layer">
@@ -104,6 +122,7 @@
 
     <div id="controls">
         <button id="snap-btn"></button>
+        <button id="switch-btn">🔄</button>
     </div>
 
     <canvas id="render-canvas"></canvas>
@@ -114,31 +133,62 @@
     const CTX = CANVAS.getContext('2d');
     const PERM_MODAL = document.getElementById('perm-modal');
     const SNAP_BTN = document.getElementById('snap-btn');
+    const SWITCH_BTN = document.getElementById('switch-btn');
     
+    // State
+    let currentFacingMode = "environment"; // 'environment' = back, 'user' = front
     let state = { lat: 0, lng: 0, address: "", shortArea: "", countryCode: "pk", mapUrl: "" };
 
-    async function init() {
+    // 1. Camera Engine
+    async function startCamera() {
         try {
+            // Stop any existing stream first
+            if (VIDEO.srcObject) {
+                VIDEO.srcObject.getTracks().forEach(track => track.stop());
+            }
+
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { 
-                    facingMode: "environment",
+                    facingMode: currentFacingMode,
                     width: { ideal: 4096 }, 
                     height: { ideal: 2160 } 
                 }, 
                 audio: false 
             });
             VIDEO.srcObject = stream;
+            
+            // Mirror effect if using front camera
+            if (currentFacingMode === 'user') {
+                VIDEO.classList.add('mirror-mode');
+            } else {
+                VIDEO.classList.remove('mirror-mode');
+            }
+
             PERM_MODAL.classList.add('hidden');
-            if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(successLocation, errorLocation, { enableHighAccuracy: true, timeout: 10000 });
-            } else { alert("GPS not supported."); }
-            setInterval(updateTime, 1000); updateTime();
         } catch (err) {
             console.error(err);
             PERM_MODAL.classList.remove('hidden');
         }
     }
 
+    // 2. Initial Setup
+    function init() {
+        startCamera();
+        if ("geolocation" in navigator) {
+            navigator.geolocation.watchPosition(successLocation, errorLocation, { enableHighAccuracy: true, timeout: 10000 });
+        } else { alert("GPS not supported."); }
+        setInterval(updateTime, 1000); 
+        updateTime();
+    }
+
+    // 3. Switch Camera Logic
+    SWITCH_BTN.addEventListener('click', () => {
+        // Toggle Mode
+        currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
+        startCamera(); // Restart with new mode
+    });
+
+    // 4. Location Logic
     function successLocation(pos) {
         state.lat = pos.coords.latitude; state.lng = pos.coords.longitude;
         document.getElementById('disp-coords').innerText = `Lat ${state.lat.toFixed(6)}° Long ${state.lng.toFixed(6)}°`;
@@ -161,10 +211,8 @@
                 document.getElementById('disp-flag').innerText = getFlagEmoji(state.countryCode);
             }).catch(e => {});
     }
-
     function errorLocation(err) { if(err.code === 1) alert("Please enable Location Services."); }
     function getFlagEmoji(cc) { return String.fromCodePoint(...cc.toUpperCase().split('').map(c => 127397 + c.charCodeAt())); }
-
     function updateTime() {
         const now = new Date();
         const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -173,50 +221,43 @@
         document.getElementById('disp-date').innerText = `${dateStr} ${timeStr} ${tz}`;
     }
 
-    // *** INSTANT TRIGGER LOGIC ***
-    
-    // We use both touchstart and click, but prevent double firing
+    // 5. Snapshot Logic (Instant Trigger)
     let isProcessing = false;
-
     function handleSnap(e) {
-        if (e.cancelable) e.preventDefault(); // Stop double-tap zoom or ghost clicks
-        if (isProcessing) return; // Prevent spamming
+        if (e.cancelable) e.preventDefault(); 
+        if (isProcessing) return; 
         isProcessing = true;
-
-        // 1. VISUAL FEEDBACK FIRST
         SNAP_BTN.classList.add('flash-pink');
-
-        // 2. DELAY PROCESSING (Allows the browser to paint the Pink Color)
         setTimeout(() => {
-            takePhoto(); // The heavy lifting
-            
-            // 3. Reset Button
+            takePhoto();
             setTimeout(() => {
                 SNAP_BTN.classList.remove('flash-pink');
                 isProcessing = false;
             }, 200);
-        }, 50); // 50ms delay is imperceptible but allows UI update
+        }, 50);
     }
-
-    // Bind fast-touch for Mobile and Click for Desktop
     SNAP_BTN.addEventListener('touchstart', handleSnap, { passive: false });
     SNAP_BTN.addEventListener('click', handleSnap);
-
 
     function takePhoto() {
         CANVAS.width = VIDEO.videoWidth;
         CANVAS.height = VIDEO.videoHeight;
+        
+        // Handle Mirroring for Selfie Mode
+        CTX.save();
+        if (currentFacingMode === 'user') {
+            CTX.translate(CANVAS.width, 0);
+            CTX.scale(-1, 1);
+        }
         CTX.drawImage(VIDEO, 0, 0, CANVAS.width, CANVAS.height);
+        CTX.restore(); // Restore context for text drawing
 
         // Overlay Drawing
         const boxHeight = CANVAS.height * 0.20;
         const yStart = CANVAS.height - boxHeight;
         CTX.fillStyle = "rgba(0, 0, 0, 0.5)";
         CTX.fillRect(0, yStart, CANVAS.width, boxHeight);
-
         const scale = CANVAS.width / 1000;
-
-        // Map
         const mapSize = boxHeight * 0.7;
         const mapMargin = 20 * scale;
         const mapX = mapMargin;
@@ -228,7 +269,6 @@
             CTX.fillText("📍", mapX + mapSize/2 - (10*scale), mapY + mapSize/2);
         } catch (e) { CTX.fillStyle = "#ccc"; CTX.fillRect(mapX, mapY, mapSize, mapSize); }
 
-        // Text
         const textX = mapX + mapSize + (20 * scale);
         let textY = mapY + (30 * scale);
         CTX.fillStyle = "white"; CTX.shadowColor = "black"; CTX.shadowBlur = 4;
@@ -252,7 +292,7 @@
         CTX.fillText(document.getElementById('disp-date').innerText, textX, textY);
 
         const link = document.createElement('a');
-        link.download = `GeoSnap_HD_${Date.now()}.jpg`;
+        link.download = `GeoSnap_Ult_${Date.now()}.jpg`;
         link.href = CANVAS.toDataURL("image/jpeg", 0.95);
         link.click();
     }
