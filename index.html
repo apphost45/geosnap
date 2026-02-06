@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoSnap Lite</title>
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: sans-serif; background: #000; }
+        #camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+        #overlay-layer { position: absolute; bottom: 0; left: 0; width: 100%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); color: white; padding: 20px; box-sizing: border-box; z-index: 2; pointer-events: none; }
+        .data-row { margin-bottom: 5px; text-shadow: 1px 1px 2px black; }
+        .coords { font-family: monospace; font-size: 0.9em; color: #ddd; }
+        .address { font-weight: bold; font-size: 1.1em; }
+        .datetime { font-size: 0.8em; color: #ccc; }
+        #controls { position: absolute; bottom: 30px; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; z-index: 3; }
+        #snap-btn { width: 70px; height: 70px; border-radius: 50%; background: white; border: 4px solid rgba(255,255,255,0.5); cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+        #snap-btn:active { transform: scale(0.95); }
+        #render-canvas { display: none; }
+        #status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; z-index: 10; }
+    </style>
+</head>
+<body>
+    <video id="camera-view" autoplay playsinline></video>
+    <div id="overlay-layer">
+        <div class="data-row address" id="disp-address">Finding location...</div>
+        <div class="data-row coords" id="disp-coords">Waiting for GPS...</div>
+        <div class="data-row datetime" id="disp-time">--/--/---- --:--</div>
+    </div>
+    <div id="controls"><button id="snap-btn"></button></div>
+    <div id="status"></div>
+    <canvas id="render-canvas"></canvas>
+<script>
+    const VIDEO = document.getElementById('camera-view');
+    const CANVAS = document.getElementById('render-canvas');
+    const CTX = CANVAS.getContext('2d');
+    const STATUS = document.getElementById('status');
+    let currentLat = null, currentLng = null, currentAddress = "Location not found";
+
+    async function init() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+            VIDEO.srcObject = stream;
+            if ("geolocation" in navigator) {
+                navigator.geolocation.watchPosition(updateLocation, handleError, { enableHighAccuracy: true, maximumAge: 0 });
+            } else { STATUS.innerText = "GPS not supported."; }
+            setInterval(updateTime, 1000); updateTime();
+        } catch (err) { STATUS.innerText = "Please allow Camera/Location access."; }
+    }
+
+    function updateLocation(pos) {
+        currentLat = pos.coords.latitude.toFixed(6);
+        currentLng = pos.coords.longitude.toFixed(6);
+        document.getElementById('disp-coords').innerText = `Lat: ${currentLat}, Lng: ${currentLng}`;
+        STATUS.innerText = "";
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}`)
+            .then(res => res.json()).then(data => {
+                currentAddress = data.display_name.split(",").slice(0,3).join(",");
+                document.getElementById('disp-address').innerText = currentAddress;
+            }).catch(e => {});
+    }
+    function handleError(err) { console.warn('GPS Error'); }
+    function updateTime() { document.getElementById('disp-time').innerText = new Date().toLocaleString(); }
+
+    document.getElementById('snap-btn').addEventListener('click', () => {
+        CANVAS.width = VIDEO.videoWidth; CANVAS.height = VIDEO.videoHeight;
+        CTX.drawImage(VIDEO, 0, 0, CANVAS.width, CANVAS.height);
+        const gradient = CTX.createLinearGradient(0, CANVAS.height - 200, 0, CANVAS.height);
+        gradient.addColorStop(0, "transparent"); gradient.addColorStop(1, "rgba(0,0,0,0.8)");
+        CTX.fillStyle = gradient; CTX.fillRect(0, CANVAS.height - 200, CANVAS.width, 200);
+        CTX.fillStyle = "white"; CTX.shadowColor = "black"; CTX.shadowBlur = 4;
+        const fontSize = CANVAS.width / 25; CTX.font = `bold ${fontSize}px sans-serif`;
+        let textY = CANVAS.height - 40;
+        CTX.font = `${fontSize * 0.7}px sans-serif`; CTX.fillText(new Date().toLocaleString(), 40, textY); textY -= (fontSize * 1.2);
+        CTX.font = `${fontSize * 0.7}px monospace`; CTX.fillText(`Lat: ${currentLat}  Lng: ${currentLng}`, 40, textY); textY -= (fontSize * 1.2);
+        CTX.font = `bold ${fontSize}px sans-serif`; CTX.fillText(currentAddress.substring(0, 40), 40, textY);
+        const link = document.createElement('a'); link.download = `GeoSnap_${Date.now()}.jpg`;
+        link.href = CANVAS.toDataURL("image/jpeg", 0.9); link.click();
+    });
+    window.onload = init;
+</script>
+</body>
+</html>
