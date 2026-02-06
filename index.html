@@ -3,79 +3,310 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoSnap Lite</title>
+    <title>GeoSnap Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: sans-serif; background: #000; }
-        #camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-        #overlay-layer { position: absolute; bottom: 0; left: 0; width: 100%; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); color: white; padding: 20px; box-sizing: border-box; z-index: 2; pointer-events: none; }
-        .data-row { margin-bottom: 5px; text-shadow: 1px 1px 2px black; }
-        .coords { font-family: monospace; font-size: 0.9em; color: #ddd; }
-        .address { font-weight: bold; font-size: 1.1em; }
-        .datetime { font-size: 0.8em; color: #ccc; }
-        #controls { position: absolute; bottom: 30px; left: 0; width: 100%; display: flex; justify-content: center; align-items: center; z-index: 3; }
-        #snap-btn { width: 70px; height: 70px; border-radius: 50%; background: white; border: 4px solid rgba(255,255,255,0.5); cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
-        #snap-btn:active { transform: scale(0.95); }
+        /* APP STYLING - v2.0 Professional UI */
+        body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Roboto', sans-serif; background: #000; }
+        
+        #camera-view {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 1;
+        }
+
+        /* The Dark Overlay at the bottom */
+        #overlay-layer {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            background: rgba(0, 0, 0, 0.4); /* Semi-transparent dark bg */
+            color: white; padding: 15px; box-sizing: border-box;
+            z-index: 2; display: flex; align-items: center;
+            font-size: 14px;
+        }
+
+        /* The Map Box (Left Side) */
+        #map-box {
+            width: 80px; height: 80px;
+            background: #eee; border-radius: 4px;
+            margin-right: 12px; flex-shrink: 0;
+            position: relative; overflow: hidden;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+        #map-img { width: 100%; height: 100%; object-fit: cover; }
+        #map-pin {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%);
+            color: red; font-size: 24px; text-shadow: 0 2px 2px rgba(0,0,0,0.5);
+        }
+
+        /* The Text Info (Right Side) */
+        #info-box { flex-grow: 1; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); }
+        
+        .loc-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+        .loc-detail { font-size: 12px; color: #ddd; margin-bottom: 2px; line-height: 1.3; }
+        .loc-coords { font-size: 11px; color: #ccc; font-family: monospace; }
+        .loc-date { font-size: 11px; color: #eebb00; font-weight: 500; margin-top: 2px; }
+
+        /* The Shutter Button */
+        #controls {
+            position: absolute; bottom: 130px; /* Moved up above the text bar */
+            left: 50%; transform: translateX(-50%);
+            z-index: 3;
+        }
+        #snap-btn {
+            width: 65px; height: 65px; border-radius: 50%;
+            background: rgba(255,255,255,0.9); border: 4px solid rgba(255,255,255,0.3);
+            cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+        #snap-btn:active { transform: translateX(-50%) scale(0.95); background: white; }
+
+        /* Warnings / Permission Request UI */
+        #perm-modal {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); z-index: 20;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            color: white; text-align: center; padding: 20px;
+        }
+        .hidden { display: none !important; }
+        .btn-retry {
+            margin-top: 20px; padding: 10px 20px; background: #007bff; color: white;
+            border: none; border-radius: 5px; font-size: 16px;
+        }
+
         #render-canvas { display: none; }
-        #status { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; text-align: center; z-index: 10; }
     </style>
 </head>
 <body>
+
     <video id="camera-view" autoplay playsinline></video>
-    <div id="overlay-layer">
-        <div class="data-row address" id="disp-address">Finding location...</div>
-        <div class="data-row coords" id="disp-coords">Waiting for GPS...</div>
-        <div class="data-row datetime" id="disp-time">--/--/---- --:--</div>
+
+    <div id="perm-modal">
+        <h2>⚠️ Location Needed</h2>
+        <p>This app needs GPS access to work.</p>
+        <p style="font-size:0.9em; color:#ccc; margin-top:10px;">If blocked, please enable Location in your browser settings and reload.</p>
+        <button class="btn-retry" onclick="init()">Try Again / Request Access</button>
     </div>
-    <div id="controls"><button id="snap-btn"></button></div>
-    <div id="status"></div>
+
+    <div id="overlay-layer">
+        <div id="map-box">
+            <img id="map-img" alt="Map">
+            <div id="map-pin">📍</div>
+        </div>
+        
+        <div id="info-box">
+            <div class="loc-title" id="disp-title">Finding Location...</div>
+            <div class="loc-detail">
+                <span id="disp-flag">🏳️</span> 
+                <span id="disp-address">Waiting for GPS...</span>
+            </div>
+            <div class="loc-coords" id="disp-coords">Lat: --.---- Long: --.----</div>
+            <div class="loc-date" id="disp-date">--/--/-- --:-- --</div>
+        </div>
+    </div>
+
+    <div id="controls">
+        <button id="snap-btn"></button>
+    </div>
+
     <canvas id="render-canvas"></canvas>
+
 <script>
+    // System Config
     const VIDEO = document.getElementById('camera-view');
     const CANVAS = document.getElementById('render-canvas');
     const CTX = CANVAS.getContext('2d');
-    const STATUS = document.getElementById('status');
-    let currentLat = null, currentLng = null, currentAddress = "Location not found";
+    const PERM_MODAL = document.getElementById('perm-modal');
+    
+    // State
+    let state = {
+        lat: 0,
+        lng: 0,
+        address: "Unknown Location",
+        shortArea: "",
+        countryCode: "pk", // Default
+        mapUrl: ""
+    };
 
+    // 1. Initialize
     async function init() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+            // Camera
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: "environment" }, 
+                audio: false 
+            });
             VIDEO.srcObject = stream;
+            PERM_MODAL.classList.add('hidden'); // Hide warning if camera works
+
+            // GPS
             if ("geolocation" in navigator) {
-                navigator.geolocation.watchPosition(updateLocation, handleError, { enableHighAccuracy: true, maximumAge: 0 });
-            } else { STATUS.innerText = "GPS not supported."; }
-            setInterval(updateTime, 1000); updateTime();
-        } catch (err) { STATUS.innerText = "Please allow Camera/Location access."; }
+                navigator.geolocation.watchPosition(
+                    successLocation, 
+                    errorLocation, 
+                    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                );
+            } else {
+                alert("GPS not supported on this device.");
+            }
+            
+            // Start Clock
+            setInterval(updateTime, 1000);
+            updateTime();
+
+        } catch (err) {
+            console.error(err);
+            PERM_MODAL.classList.remove('hidden'); // Show warning
+            document.querySelector('#perm-modal p').innerText = "Error: " + err.message + ". Check Permissions.";
+        }
     }
 
-    function updateLocation(pos) {
-        currentLat = pos.coords.latitude.toFixed(6);
-        currentLng = pos.coords.longitude.toFixed(6);
-        document.getElementById('disp-coords').innerText = `Lat: ${currentLat}, Lng: ${currentLng}`;
-        STATUS.innerText = "";
-        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${currentLat}&lon=${currentLng}`)
-            .then(res => res.json()).then(data => {
-                currentAddress = data.display_name.split(",").slice(0,3).join(",");
-                document.getElementById('disp-address').innerText = currentAddress;
-            }).catch(e => {});
-    }
-    function handleError(err) { console.warn('GPS Error'); }
-    function updateTime() { document.getElementById('disp-time').innerText = new Date().toLocaleString(); }
+    // 2. Location Logic
+    function successLocation(pos) {
+        state.lat = pos.coords.latitude;
+        state.lng = pos.coords.longitude;
+        
+        // Update UI Text
+        document.getElementById('disp-coords').innerText = `Lat ${state.lat.toFixed(6)}° Long ${state.lng.toFixed(6)}°`;
+        PERM_MODAL.classList.add('hidden');
 
+        // Update Map Image (Using OpenStreetMap Static Tile logic)
+        // Zoom 15 is good for streets
+        const zoom = 15;
+        const x = Math.floor((state.lng + 180) / 360 * Math.pow(2, zoom));
+        const y = Math.floor((1 - Math.log(Math.tan(state.lat * Math.PI / 180) + 1 / Math.cos(state.lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
+        
+        // We use a CORS-friendly OSM tile server if possible, or standard OSM
+        state.mapUrl = `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
+        
+        const mapImg = document.getElementById('map-img');
+        mapImg.crossOrigin = "Anonymous"; // Crucial for canvas saving
+        mapImg.src = state.mapUrl;
+
+        // Fetch Address
+        fetchAddress(state.lat, state.lng);
+    }
+
+    function errorLocation(err) {
+        // If user denied GPS but allowed Camera, we still show the app but with a warning
+        if(err.code === 1) { // PERMISSION_DENIED
+             alert("Please turn on Location Services in your Phone Settings to see address.");
+        }
+    }
+
+    function fetchAddress(lat, lng) {
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`)
+            .then(res => res.json())
+            .then(data => {
+                const addr = data.address;
+                state.countryCode = addr.country_code || 'pk';
+                
+                // Construct "Big Header" (City/District)
+                state.shortArea = addr.city || addr.town || addr.village || addr.county || "Unknown Area";
+                
+                // Construct "Full Address"
+                state.address = data.display_name.split(",").slice(0, 4).join(",");
+
+                // Update UI
+                document.getElementById('disp-title').innerText = state.shortArea + ", " + (addr.state || addr.country);
+                document.getElementById('disp-address').innerText = state.address;
+                document.getElementById('disp-flag').innerText = getFlagEmoji(state.countryCode);
+            })
+            .catch(e => console.log("Addr Error", e));
+    }
+
+    // 3. Helper: Country Code to Emoji
+    function getFlagEmoji(countryCode) {
+        const codePoints = countryCode
+            .toUpperCase()
+            .split('')
+            .map(char =>  127397 + char.charCodeAt());
+        return String.fromCodePoint(...codePoints);
+    }
+
+    // 4. Time
+    function updateTime() {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' });
+        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        // Get Timezone offset (e.g. GMT+05:00)
+        const tz = now.toString().match(/GMT[\+\-]\d{4}/)[0].replace(/(\d{2})(\d{2})$/, '$1:$2');
+        
+        document.getElementById('disp-date').innerText = `${dateStr} ${timeStr} ${tz}`;
+    }
+
+    // 5. THE SNAPSHOT (Canvas Drawing)
     document.getElementById('snap-btn').addEventListener('click', () => {
-        CANVAS.width = VIDEO.videoWidth; CANVAS.height = VIDEO.videoHeight;
+        CANVAS.width = VIDEO.videoWidth;
+        CANVAS.height = VIDEO.videoHeight;
+        
+        // 1. Draw Camera
         CTX.drawImage(VIDEO, 0, 0, CANVAS.width, CANVAS.height);
-        const gradient = CTX.createLinearGradient(0, CANVAS.height - 200, 0, CANVAS.height);
-        gradient.addColorStop(0, "transparent"); gradient.addColorStop(1, "rgba(0,0,0,0.8)");
-        CTX.fillStyle = gradient; CTX.fillRect(0, CANVAS.height - 200, CANVAS.width, 200);
-        CTX.fillStyle = "white"; CTX.shadowColor = "black"; CTX.shadowBlur = 4;
-        const fontSize = CANVAS.width / 25; CTX.font = `bold ${fontSize}px sans-serif`;
-        let textY = CANVAS.height - 40;
-        CTX.font = `${fontSize * 0.7}px sans-serif`; CTX.fillText(new Date().toLocaleString(), 40, textY); textY -= (fontSize * 1.2);
-        CTX.font = `${fontSize * 0.7}px monospace`; CTX.fillText(`Lat: ${currentLat}  Lng: ${currentLng}`, 40, textY); textY -= (fontSize * 1.2);
-        CTX.font = `bold ${fontSize}px sans-serif`; CTX.fillText(currentAddress.substring(0, 40), 40, textY);
-        const link = document.createElement('a'); link.download = `GeoSnap_${Date.now()}.jpg`;
-        link.href = CANVAS.toDataURL("image/jpeg", 0.9); link.click();
+
+        // 2. Draw Overlay Background
+        const boxHeight = CANVAS.height * 0.20; // Bottom 20%
+        const yStart = CANVAS.height - boxHeight;
+        
+        CTX.fillStyle = "rgba(0, 0, 0, 0.5)";
+        CTX.fillRect(0, yStart, CANVAS.width, boxHeight);
+
+        // Scaling Factor (based on resolution)
+        const scale = CANVAS.width / 1000; 
+
+        // 3. Draw Map (Left Side)
+        const mapSize = boxHeight * 0.7;
+        const mapMargin = 20 * scale;
+        const mapX = mapMargin;
+        const mapY = yStart + (boxHeight - mapSize) / 2;
+
+        try {
+            const mapImg = document.getElementById('map-img');
+            CTX.drawImage(mapImg, mapX, mapY, mapSize, mapSize);
+            // Draw red pin on map
+            CTX.font = `${30 * scale}px serif`;
+            CTX.fillText("📍", mapX + mapSize/2 - (10*scale), mapY + mapSize/2);
+        } catch (e) {
+            // If map fails (CORS), draw a grey box
+            CTX.fillStyle = "#ccc";
+            CTX.fillRect(mapX, mapY, mapSize, mapSize);
+        }
+
+        // 4. Draw Text (Right Side)
+        const textX = mapX + mapSize + (20 * scale);
+        let textY = mapY + (30 * scale);
+
+        CTX.fillStyle = "white";
+        CTX.shadowColor = "black";
+        CTX.shadowBlur = 4;
+
+        // Header (City)
+        CTX.font = `bold ${35 * scale}px Roboto, sans-serif`;
+        const title = document.getElementById('disp-title').innerText;
+        CTX.fillText(title, textX, textY);
+        
+        // Flag + Address
+        textY += (40 * scale);
+        CTX.font = `${22 * scale}px Roboto, sans-serif`;
+        const addr = document.getElementById('disp-flag').innerText + " " + document.getElementById('disp-address').innerText;
+        CTX.fillText(addr.substring(0, 55), textX, textY);
+
+        // Coords
+        textY += (35 * scale);
+        CTX.font = `${20 * scale}px monospace`;
+        CTX.fillStyle = "#ddd";
+        CTX.fillText(document.getElementById('disp-coords').innerText, textX, textY);
+
+        // Date
+        textY += (35 * scale);
+        CTX.font = `bold ${20 * scale}px Roboto, sans-serif`;
+        CTX.fillStyle = "#eebb00";
+        CTX.fillText(document.getElementById('disp-date').innerText, textX, textY);
+
+        // Save
+        const link = document.createElement('a');
+        link.download = `GeoSnap_${Date.now()}.jpg`;
+        link.href = CANVAS.toDataURL("image/jpeg", 0.9);
+        link.click();
     });
+
+    // Start
     window.onload = init;
 </script>
 </body>
