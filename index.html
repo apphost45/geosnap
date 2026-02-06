@@ -3,19 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoSnap Pro HD</title>
+    <title>GeoSnap Instant</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* v3.0 HD - Professional Layout */
+        /* v4.0 Instant Trigger - UI Optimized */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Roboto', sans-serif; background: #000; }
         
-        /* Video fills screen but maintains aspect ratio */
         #camera-view {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             object-fit: cover; z-index: 1;
         }
 
-        /* Overlay Layout */
         #overlay-layer {
             position: absolute; bottom: 0; left: 0; width: 100%;
             background: rgba(0, 0, 0, 0.4); 
@@ -23,12 +21,9 @@
             z-index: 2; display: flex; align-items: center;
         }
 
-        /* Map Box */
         #map-box {
-            width: 80px; height: 80px;
-            background: #eee; border-radius: 4px;
-            margin-right: 12px; flex-shrink: 0;
-            position: relative; overflow: hidden;
+            width: 80px; height: 80px; background: #eee; border-radius: 4px;
+            margin-right: 12px; flex-shrink: 0; position: relative; overflow: hidden;
             border: 2px solid rgba(255,255,255,0.3);
         }
         #map-img { width: 100%; height: 100%; object-fit: cover; }
@@ -37,27 +32,35 @@
             color: red; font-size: 24px; text-shadow: 0 2px 2px rgba(0,0,0,0.5);
         }
 
-        /* Text Info */
         #info-box { flex-grow: 1; text-shadow: 1px 1px 3px rgba(0,0,0,0.8); }
         .loc-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 2px; }
         .loc-detail { font-size: 12px; color: #ddd; margin-bottom: 2px; line-height: 1.3; }
         .loc-coords { font-size: 11px; color: #ccc; font-family: monospace; }
         .loc-date { font-size: 11px; color: #eebb00; font-weight: 500; margin-top: 2px; }
 
-        /* Shutter Button */
+        /* BUTTON STYLING */
         #controls {
             position: absolute; bottom: 130px; 
             left: 50%; transform: translateX(-50%);
             z-index: 3;
         }
         #snap-btn {
-            width: 70px; height: 70px; border-radius: 50%;
-            background: rgba(255,255,255,0.9); border: 4px solid rgba(255,255,255,0.3);
-            cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            width: 75px; height: 75px; border-radius: 50%;
+            background: rgba(255,255,255,0.9); 
+            border: 4px solid rgba(255,255,255,0.3);
+            cursor: pointer; 
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            transition: background-color 0.1s, transform 0.1s;
+            -webkit-tap-highlight-color: transparent; /* Removes blue box on Android */
         }
-        #snap-btn:active { transform: translateX(-50%) scale(0.95); background: white; }
+        
+        /* The "Pink" state class */
+        #snap-btn.flash-pink {
+            background-color: #FF007F !important; /* Hot Pink */
+            border-color: white !important;
+            transform: scale(0.90);
+        }
 
-        /* Permission Warning */
         #perm-modal {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 20;
@@ -110,13 +113,12 @@
     const CANVAS = document.getElementById('render-canvas');
     const CTX = CANVAS.getContext('2d');
     const PERM_MODAL = document.getElementById('perm-modal');
+    const SNAP_BTN = document.getElementById('snap-btn');
     
     let state = { lat: 0, lng: 0, address: "", shortArea: "", countryCode: "pk", mapUrl: "" };
 
     async function init() {
         try {
-            // *** HD CAMERA UPGRADE ***
-            // We ask for "ideal" 4K resolution. The phone will give the best it has.
             const stream = await navigator.mediaDevices.getUserMedia({ 
                 video: { 
                     facingMode: "environment",
@@ -126,20 +128,11 @@
                 audio: false 
             });
             VIDEO.srcObject = stream;
-            
-            // Wait for video to actually load to ensure we get real dimensions
-            VIDEO.onloadedmetadata = () => {
-                console.log("Camera resolution active: " + VIDEO.videoWidth + "x" + VIDEO.videoHeight);
-            };
-
             PERM_MODAL.classList.add('hidden');
-
             if ("geolocation" in navigator) {
                 navigator.geolocation.watchPosition(successLocation, errorLocation, { enableHighAccuracy: true, timeout: 10000 });
             } else { alert("GPS not supported."); }
-            
             setInterval(updateTime, 1000); updateTime();
-
         } catch (err) {
             console.error(err);
             PERM_MODAL.classList.remove('hidden');
@@ -150,8 +143,6 @@
         state.lat = pos.coords.latitude; state.lng = pos.coords.longitude;
         document.getElementById('disp-coords').innerText = `Lat ${state.lat.toFixed(6)}° Long ${state.lng.toFixed(6)}°`;
         PERM_MODAL.classList.add('hidden');
-
-        // Map Tile
         const zoom = 15;
         const x = Math.floor((state.lng + 180) / 360 * Math.pow(2, zoom));
         const y = Math.floor((1 - Math.log(Math.tan(state.lat * Math.PI / 180) + 1 / Math.cos(state.lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
@@ -159,7 +150,6 @@
         const mapImg = document.getElementById('map-img');
         mapImg.crossOrigin = "Anonymous";
         mapImg.src = state.mapUrl;
-
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.lat}&lon=${state.lng}`)
             .then(res => res.json()).then(data => {
                 const addr = data.address;
@@ -183,13 +173,39 @@
         document.getElementById('disp-date').innerText = `${dateStr} ${timeStr} ${tz}`;
     }
 
-    document.getElementById('snap-btn').addEventListener('click', () => {
-        // *** HD CAPTURE UPGRADE ***
-        // We use the actual video source dimensions (e.g. 1920x1080 or 3840x2160)
-        // instead of the screen dimensions.
+    // *** INSTANT TRIGGER LOGIC ***
+    
+    // We use both touchstart and click, but prevent double firing
+    let isProcessing = false;
+
+    function handleSnap(e) {
+        if (e.cancelable) e.preventDefault(); // Stop double-tap zoom or ghost clicks
+        if (isProcessing) return; // Prevent spamming
+        isProcessing = true;
+
+        // 1. VISUAL FEEDBACK FIRST
+        SNAP_BTN.classList.add('flash-pink');
+
+        // 2. DELAY PROCESSING (Allows the browser to paint the Pink Color)
+        setTimeout(() => {
+            takePhoto(); // The heavy lifting
+            
+            // 3. Reset Button
+            setTimeout(() => {
+                SNAP_BTN.classList.remove('flash-pink');
+                isProcessing = false;
+            }, 200);
+        }, 50); // 50ms delay is imperceptible but allows UI update
+    }
+
+    // Bind fast-touch for Mobile and Click for Desktop
+    SNAP_BTN.addEventListener('touchstart', handleSnap, { passive: false });
+    SNAP_BTN.addEventListener('click', handleSnap);
+
+
+    function takePhoto() {
         CANVAS.width = VIDEO.videoWidth;
         CANVAS.height = VIDEO.videoHeight;
-        
         CTX.drawImage(VIDEO, 0, 0, CANVAS.width, CANVAS.height);
 
         // Overlay Drawing
@@ -198,7 +214,7 @@
         CTX.fillStyle = "rgba(0, 0, 0, 0.5)";
         CTX.fillRect(0, yStart, CANVAS.width, boxHeight);
 
-        const scale = CANVAS.width / 1000; // Dynamic scaling based on resolution
+        const scale = CANVAS.width / 1000;
 
         // Map
         const mapSize = boxHeight * 0.7;
@@ -215,7 +231,6 @@
         // Text
         const textX = mapX + mapSize + (20 * scale);
         let textY = mapY + (30 * scale);
-
         CTX.fillStyle = "white"; CTX.shadowColor = "black"; CTX.shadowBlur = 4;
         
         CTX.font = `bold ${35 * scale}px Roboto, sans-serif`;
@@ -238,9 +253,9 @@
 
         const link = document.createElement('a');
         link.download = `GeoSnap_HD_${Date.now()}.jpg`;
-        link.href = CANVAS.toDataURL("image/jpeg", 0.95); // High Quality JPG
+        link.href = CANVAS.toDataURL("image/jpeg", 0.95);
         link.click();
-    });
+    }
 
     window.onload = init;
 </script>
