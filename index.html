@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoSnap Ultimate</title>
+    <title>GeoSnap Branded</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* v5.0 Ultimate - Camera Switch Added */
+        /* v6.0 Branded - With Top-Left Watermark */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Roboto', sans-serif; background: #000; }
         
         #camera-view {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 1; transform: scaleX(1); /* Default Normal */
+            object-fit: cover; z-index: 1; transform: scaleX(1);
         }
-        /* Mirror the view only when using Front Camera */
         .mirror-mode { transform: scaleX(-1) !important; }
 
         #overlay-layer {
@@ -40,45 +39,29 @@
         .loc-coords { font-size: 11px; color: #ccc; font-family: monospace; }
         .loc-date { font-size: 11px; color: #eebb00; font-weight: 500; margin-top: 2px; }
 
-        /* CONTROLS CONTAINER */
         #controls {
             position: absolute; bottom: 130px; 
             width: 100%; display: flex; justify-content: center; align-items: center;
-            z-index: 3;
-            pointer-events: none; /* Let clicks pass through empty space */
+            z-index: 3; pointer-events: none;
         }
-
-        /* SNAP BUTTON */
         #snap-btn {
             width: 75px; height: 75px; border-radius: 50%;
-            background: rgba(255,255,255,0.9); 
-            border: 4px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.9); border: 4px solid rgba(255,255,255,0.3);
             cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-            transition: background-color 0.1s, transform 0.1s;
-            pointer-events: auto;
+            transition: background-color 0.1s, transform 0.1s; pointer-events: auto;
             -webkit-tap-highlight-color: transparent;
         }
         #snap-btn.flash-pink {
-            background-color: #FF007F !important;
-            border-color: white !important;
-            transform: scale(0.90);
+            background-color: #FF007F !important; border-color: white !important; transform: scale(0.90);
         }
-
-        /* SWITCH CAMERA BUTTON */
         #switch-btn {
-            position: absolute; right: 40px; /* Positioned to the right of center */
-            width: 50px; height: 50px;
-            background: rgba(0,0,0,0.5);
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            color: white; font-size: 24px;
-            display: flex; justify-content: center; align-items: center;
-            cursor: pointer; pointer-events: auto;
-            -webkit-tap-highlight-color: transparent;
+            position: absolute; right: 40px; width: 50px; height: 50px;
+            background: rgba(0,0,0,0.5); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%;
+            color: white; font-size: 24px; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent;
         }
         #switch-btn:active { background: rgba(255,255,255,0.2); transform: scale(0.95); }
 
-        /* Permissions Modal */
         #perm-modal {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.9); z-index: 20;
@@ -91,12 +74,15 @@
             border: none; border-radius: 5px; font-size: 16px;
         }
 
-        #render-canvas { display: none; }
+        /* Hide processing elements */
+        #render-canvas, #watermark-logo { display: none; }
     </style>
 </head>
 <body>
 
     <video id="camera-view" autoplay playsinline></video>
+    
+    <img id="watermark-logo" src="https://cdn.jsdelivr.net/gh/mirzamunib24/my-images@main/rgrg.png" crossorigin="anonymous">
 
     <div id="perm-modal">
         <h2>⚠️ Location Needed</h2>
@@ -134,61 +120,39 @@
     const PERM_MODAL = document.getElementById('perm-modal');
     const SNAP_BTN = document.getElementById('snap-btn');
     const SWITCH_BTN = document.getElementById('switch-btn');
+    const WATERMARK_IMG = document.getElementById('watermark-logo');
     
-    // State
-    let currentFacingMode = "environment"; // 'environment' = back, 'user' = front
+    let currentFacingMode = "environment";
     let state = { lat: 0, lng: 0, address: "", shortArea: "", countryCode: "pk", mapUrl: "" };
 
-    // 1. Camera Engine
     async function startCamera() {
         try {
-            // Stop any existing stream first
-            if (VIDEO.srcObject) {
-                VIDEO.srcObject.getTracks().forEach(track => track.stop());
-            }
-
+            if (VIDEO.srcObject) VIDEO.srcObject.getTracks().forEach(track => track.stop());
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: currentFacingMode,
-                    width: { ideal: 4096 }, 
-                    height: { ideal: 2160 } 
-                }, 
+                video: { facingMode: currentFacingMode, width: { ideal: 4096 }, height: { ideal: 2160 } }, 
                 audio: false 
             });
             VIDEO.srcObject = stream;
-            
-            // Mirror effect if using front camera
-            if (currentFacingMode === 'user') {
-                VIDEO.classList.add('mirror-mode');
-            } else {
-                VIDEO.classList.remove('mirror-mode');
-            }
-
+            if (currentFacingMode === 'user') VIDEO.classList.add('mirror-mode');
+            else VIDEO.classList.remove('mirror-mode');
             PERM_MODAL.classList.add('hidden');
         } catch (err) {
-            console.error(err);
-            PERM_MODAL.classList.remove('hidden');
+            console.error(err); PERM_MODAL.classList.remove('hidden');
         }
     }
 
-    // 2. Initial Setup
     function init() {
         startCamera();
-        if ("geolocation" in navigator) {
-            navigator.geolocation.watchPosition(successLocation, errorLocation, { enableHighAccuracy: true, timeout: 10000 });
-        } else { alert("GPS not supported."); }
-        setInterval(updateTime, 1000); 
-        updateTime();
+        if ("geolocation" in navigator) navigator.geolocation.watchPosition(successLocation, errorLocation, { enableHighAccuracy: true, timeout: 10000 });
+        else alert("GPS not supported.");
+        setInterval(updateTime, 1000); updateTime();
     }
 
-    // 3. Switch Camera Logic
     SWITCH_BTN.addEventListener('click', () => {
-        // Toggle Mode
         currentFacingMode = (currentFacingMode === 'environment') ? 'user' : 'environment';
-        startCamera(); // Restart with new mode
+        startCamera();
     });
 
-    // 4. Location Logic
     function successLocation(pos) {
         state.lat = pos.coords.latitude; state.lng = pos.coords.longitude;
         document.getElementById('disp-coords').innerText = `Lat ${state.lat.toFixed(6)}° Long ${state.lng.toFixed(6)}°`;
@@ -198,8 +162,7 @@
         const y = Math.floor((1 - Math.log(Math.tan(state.lat * Math.PI / 180) + 1 / Math.cos(state.lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, zoom));
         state.mapUrl = `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
         const mapImg = document.getElementById('map-img');
-        mapImg.crossOrigin = "Anonymous";
-        mapImg.src = state.mapUrl;
+        mapImg.crossOrigin = "Anonymous"; mapImg.src = state.mapUrl;
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.lat}&lon=${state.lng}`)
             .then(res => res.json()).then(data => {
                 const addr = data.address;
@@ -215,86 +178,64 @@
     function getFlagEmoji(cc) { return String.fromCodePoint(...cc.toUpperCase().split('').map(c => 127397 + c.charCodeAt())); }
     function updateTime() {
         const now = new Date();
-        const dateStr = now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' });
-        const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-        const tz = now.toString().match(/GMT[\+\-]\d{4}/)[0].replace(/(\d{2})(\d{2})$/, '$1:$2');
-        document.getElementById('disp-date').innerText = `${dateStr} ${timeStr} ${tz}`;
+        document.getElementById('disp-date').innerText = `${now.toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: '2-digit', day: '2-digit' })} ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })} ${now.toString().match(/GMT[\+\-]\d{4}/)[0].replace(/(\d{2})(\d{2})$/, '$1:$2')}`;
     }
 
-    // 5. Snapshot Logic (Instant Trigger)
     let isProcessing = false;
     function handleSnap(e) {
-        if (e.cancelable) e.preventDefault(); 
-        if (isProcessing) return; 
-        isProcessing = true;
+        if (e.cancelable) e.preventDefault(); if (isProcessing) return; isProcessing = true;
         SNAP_BTN.classList.add('flash-pink');
-        setTimeout(() => {
-            takePhoto();
-            setTimeout(() => {
-                SNAP_BTN.classList.remove('flash-pink');
-                isProcessing = false;
-            }, 200);
-        }, 50);
+        setTimeout(() => { takePhoto(); setTimeout(() => { SNAP_BTN.classList.remove('flash-pink'); isProcessing = false; }, 200); }, 50);
     }
     SNAP_BTN.addEventListener('touchstart', handleSnap, { passive: false });
     SNAP_BTN.addEventListener('click', handleSnap);
 
     function takePhoto() {
-        CANVAS.width = VIDEO.videoWidth;
-        CANVAS.height = VIDEO.videoHeight;
-        
-        // Handle Mirroring for Selfie Mode
+        CANVAS.width = VIDEO.videoWidth; CANVAS.height = VIDEO.videoHeight;
         CTX.save();
-        if (currentFacingMode === 'user') {
-            CTX.translate(CANVAS.width, 0);
-            CTX.scale(-1, 1);
-        }
+        if (currentFacingMode === 'user') { CTX.translate(CANVAS.width, 0); CTX.scale(-1, 1); }
         CTX.drawImage(VIDEO, 0, 0, CANVAS.width, CANVAS.height);
-        CTX.restore(); // Restore context for text drawing
+        CTX.restore();
 
-        // Overlay Drawing
-        const boxHeight = CANVAS.height * 0.20;
-        const yStart = CANVAS.height - boxHeight;
-        CTX.fillStyle = "rgba(0, 0, 0, 0.5)";
-        CTX.fillRect(0, yStart, CANVAS.width, boxHeight);
-        const scale = CANVAS.width / 1000;
-        const mapSize = boxHeight * 0.7;
-        const mapMargin = 20 * scale;
-        const mapX = mapMargin;
-        const mapY = yStart + (boxHeight - mapSize) / 2;
+        // --- START WATERMARK LOGIC ---
+        CTX.save(); // Save current state before applying opacity
+        CTX.globalAlpha = 0.5; // 50% Opacity based on requirement
+
+        // Calculate relative size for "1.5 inches" look
+        // We use 15% of the total image width as a reference for "1.5 inches"
+        const logoWidth = CANVAS.width * 0.15; 
+        const logoHeight = logoWidth; // Assuming square aspect ratio based on request
+        const padding = CANVAS.width * 0.03; // 3% padding from top left edge
+
         try {
-            const mapImg = document.getElementById('map-img');
-            CTX.drawImage(mapImg, mapX, mapY, mapSize, mapSize);
-            CTX.font = `${30 * scale}px serif`;
-            CTX.fillText("📍", mapX + mapSize/2 - (10*scale), mapY + mapSize/2);
+            CTX.drawImage(WATERMARK_IMG, padding, padding, logoWidth, logoHeight);
+        } catch(e) { console.warn("Logo failed to load"); }
+
+        CTX.restore(); // Restore opacity back to 100% for the text overlay
+        // --- END WATERMARK LOGIC ---
+
+
+        const boxHeight = CANVAS.height * 0.20; const yStart = CANVAS.height - boxHeight;
+        CTX.fillStyle = "rgba(0, 0, 0, 0.5)"; CTX.fillRect(0, yStart, CANVAS.width, boxHeight);
+        const scale = CANVAS.width / 1000;
+        const mapSize = boxHeight * 0.7; const mapMargin = 20 * scale; const mapX = mapMargin; const mapY = yStart + (boxHeight - mapSize) / 2;
+        try {
+            const mapImg = document.getElementById('map-img'); CTX.drawImage(mapImg, mapX, mapY, mapSize, mapSize);
+            CTX.font = `${30 * scale}px serif`; CTX.fillText("📍", mapX + mapSize/2 - (10*scale), mapY + mapSize/2);
         } catch (e) { CTX.fillStyle = "#ccc"; CTX.fillRect(mapX, mapY, mapSize, mapSize); }
 
-        const textX = mapX + mapSize + (20 * scale);
-        let textY = mapY + (30 * scale);
+        const textX = mapX + mapSize + (20 * scale); let textY = mapY + (30 * scale);
         CTX.fillStyle = "white"; CTX.shadowColor = "black"; CTX.shadowBlur = 4;
-        
-        CTX.font = `bold ${35 * scale}px Roboto, sans-serif`;
-        CTX.fillText(document.getElementById('disp-title').innerText, textX, textY);
-        
-        textY += (40 * scale);
-        CTX.font = `${22 * scale}px Roboto, sans-serif`;
-        const addr = document.getElementById('disp-flag').innerText + " " + document.getElementById('disp-address').innerText;
-        CTX.fillText(addr.substring(0, 55), textX, textY);
-
-        textY += (35 * scale);
-        CTX.font = `${20 * scale}px monospace`;
-        CTX.fillStyle = "#ddd";
+        CTX.font = `bold ${35 * scale}px Roboto, sans-serif`; CTX.fillText(document.getElementById('disp-title').innerText, textX, textY);
+        textY += (40 * scale); CTX.font = `${22 * scale}px Roboto, sans-serif`;
+        CTX.fillText((document.getElementById('disp-flag').innerText + " " + document.getElementById('disp-address').innerText).substring(0, 55), textX, textY);
+        textY += (35 * scale); CTX.font = `${20 * scale}px monospace`; CTX.fillStyle = "#ddd";
         CTX.fillText(document.getElementById('disp-coords').innerText, textX, textY);
-
-        textY += (35 * scale);
-        CTX.font = `bold ${20 * scale}px Roboto, sans-serif`;
-        CTX.fillStyle = "#eebb00";
+        textY += (35 * scale); CTX.font = `bold ${20 * scale}px Roboto, sans-serif`; CTX.fillStyle = "#eebb00";
         CTX.fillText(document.getElementById('disp-date').innerText, textX, textY);
 
-        const link = document.createElement('a');
-        link.download = `GeoSnap_Ult_${Date.now()}.jpg`;
-        link.href = CANVAS.toDataURL("image/jpeg", 0.95);
-        link.click();
+        const link = document.createElement('a'); link.download = `GeoSnap_Branded_${Date.now()}.jpg`;
+        link.href = CANVAS.toDataURL("image/jpeg", 0.95); link.click();
     }
 
     window.onload = init;
