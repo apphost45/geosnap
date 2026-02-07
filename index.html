@@ -3,10 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoSnap Pro - Precision</title>
+    <title>GeoSnap Pro - Manual Override</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        /* v10.0 Precision - Priority on Local Place Names */
+        /* v11.0 Manual Note Support */
         body, html { margin: 0; padding: 0; height: 100%; overflow: hidden; font-family: 'Roboto', sans-serif; background: #000; }
         #camera-view { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
         .mirror-mode { transform: scaleX(-1) !important; }
@@ -15,14 +15,14 @@
         #map-img { width: 100%; height: 100%; object-fit: cover; }
         #map-pin { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -100%); color: red; font-size: 26px; }
         #info-box { flex-grow: 1; text-shadow: 2px 2px 4px rgba(0,0,0,0.9); overflow: hidden; }
-        .loc-title { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .loc-detail { font-size: 15px; color: #eee; margin-bottom: 3px; }
+        .loc-title { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 2px; }
+        .loc-detail { font-size: 16px; color: #eee; margin-bottom: 3px; }
         .loc-coords { font-size: 14px; color: #ccc; font-family: monospace; }
         .loc-date { font-size: 14px; color: #FFD700; font-weight: 700; margin-top: 3px; }
         #controls { position: absolute; bottom: 150px; width: 100%; display: flex; justify-content: center; align-items: center; z-index: 3; pointer-events: none; }
-        #snap-btn { width: 80px; height: 80px; border-radius: 50%; background: rgba(255,255,255,0.9); border: 5px solid rgba(255,255,255,0.3); cursor: pointer; pointer-events: auto; -webkit-tap-highlight-color: transparent; margin: 0 35px; }
-        #snap-btn.flash-pink { background-color: #FF007F !important; transform: scale(0.92); }
-        .side-btn { width: 55px; height: 55px; background: rgba(0,0,0,0.6); border: 2px solid rgba(255,255,255,0.4); border-radius: 50%; color: white; font-size: 26px; display: flex; justify-content: center; align-items: center; cursor: pointer; pointer-events: auto; }
+        #snap-btn { width: 80px; height: 80px; border-radius: 50%; background: white; border: 5px solid rgba(255,255,255,0.3); cursor: pointer; pointer-events: auto; }
+        #snap-btn.flash-pink { background-color: #FF007F !important; }
+        .side-btn { width: 50px; height: 50px; background: rgba(0,0,0,0.6); border: 1px solid white; border-radius: 50%; color: white; font-size: 22px; display: flex; justify-content: center; align-items: center; cursor: pointer; pointer-events: auto; margin: 0 15px; }
         .side-btn.active { background: #FFD700; color: black; }
         #render-canvas, #watermark-logo { display: none; }
     </style>
@@ -35,14 +35,15 @@
     <div id="overlay-layer">
         <div id="map-box"><img id="map-img"><div id="map-pin">📍</div></div>
         <div id="info-box">
-            <div class="loc-title" id="disp-title">Locating...</div>
-            <div class="loc-detail"><span id="disp-flag"></span> <span id="disp-address">Finding place name...</span></div>
+            <div class="loc-title" id="disp-title">Tap '✎' for Place Name</div>
+            <div class="loc-detail"><span id="disp-flag"></span> <span id="disp-address">Finding Address...</span></div>
             <div class="loc-coords" id="disp-coords">...</div>
             <div class="loc-date" id="disp-date">...</div>
         </div>
     </div>
 
     <div id="controls">
+        <button id="note-btn" class="side-btn">✎</button>
         <button id="flash-btn" class="side-btn">⚡</button>
         <button id="snap-btn"></button>
         <button id="switch-btn" class="side-btn">🔄</button>
@@ -56,26 +57,33 @@
     const CTX = CANVAS.getContext('2d');
     const WATERMARK_IMG = document.getElementById('watermark-logo');
     const FLASH_BTN = document.getElementById('flash-btn');
+    const NOTE_BTN = document.getElementById('note-btn');
     
     let currentFacingMode = "environment";
-    let state = { lat: 0, lng: 0, address: "", shortArea: "", countryCode: "pk", mapUrl: "" };
+    let state = { lat: 0, lng: 0, address: "", shortArea: "", countryCode: "pk", manualNote: "" };
     let videoTrack = null;
     let isFlashOn = false;
 
     async function startCamera() {
         try {
             if (VIDEO.srcObject) VIDEO.srcObject.getTracks().forEach(t => t.stop());
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: currentFacingMode, width: { ideal: 4096 }, height: { ideal: 2160 } }
-            });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentFacingMode, width: { ideal: 4096 }, height: { ideal: 2160 } } });
             VIDEO.srcObject = stream;
             videoTrack = stream.getVideoTracks()[0];
             const cap = videoTrack.getCapabilities();
             FLASH_BTN.style.display = cap.torch ? "flex" : "none";
-            isFlashOn = false; FLASH_BTN.classList.remove('active');
             VIDEO.style.transform = (currentFacingMode === 'user') ? 'scaleX(-1)' : 'scaleX(1)';
         } catch (err) { console.error(err); }
     }
+
+    // --- MANUAL NOTE LOGIC ---
+    NOTE_BTN.onclick = () => {
+        const userInput = prompt("Enter Place Name (e.g., Cheema Colony, 79 Chak):", state.manualNote || "");
+        if (userInput !== null) {
+            state.manualNote = userInput;
+            document.getElementById('disp-title').innerText = userInput || state.shortArea || "Location";
+        }
+    };
 
     FLASH_BTN.onclick = async () => {
         if (!videoTrack) return;
@@ -107,20 +115,19 @@
         const mapImg = document.getElementById('map-img');
         mapImg.crossOrigin = "anonymous"; mapImg.src = `https://tile.openstreetmap.org/${zoom}/${x}/${y}.png`;
         
-        // --- IMPROVED PLACE NAME LOGIC ---
         fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${state.lat}&lon=${state.lng}&addressdetails=1`)
             .then(r => r.json()).then(d => {
                 const a = d.address;
                 state.countryCode = a.country_code || 'pk';
+                state.shortArea = a.neighbourhood || a.suburb || a.residential || a.village || a.hamlet || a.road || "Unknown Place";
                 
-                // Priority list for "Place Name" (Neighborhood -> Suburb -> Road)
-                state.shortArea = a.neighbourhood || a.suburb || a.village || a.hamlet || a.road || a.city_district || "Unknown Place";
-                
-                // Secondary details for the small line
                 const city = a.city || a.town || a.county || "";
                 state.address = `${state.shortArea}, ${city}`;
 
-                document.getElementById('disp-title').innerText = state.shortArea;
+                // If user hasn't typed a manual note, show the automatic one
+                if (!state.manualNote) {
+                    document.getElementById('disp-title').innerText = state.shortArea;
+                }
                 document.getElementById('disp-address').innerText = state.address;
                 document.getElementById('disp-flag').innerText = String.fromCodePoint(...state.countryCode.toUpperCase().split('').map(c => 127397 + c.charCodeAt()));
             });
@@ -164,23 +171,23 @@
         try { CTX.drawImage(document.getElementById('map-img'), mX, mY, mS, mS); } catch(e){}
 
         const tX = mX + mS + (25 * s);
-        let tY = mY + (45 * s);
+        let tY = mY + (48 * s);
         CTX.fillStyle = "white"; CTX.shadowBlur = 4; CTX.shadowColor = "black";
         
         // Final Large Fonts
-        CTX.font = `bold ${48 * s}px Roboto`;
+        CTX.font = `bold ${52 * s}px Roboto`;
         CTX.fillText(document.getElementById('disp-title').innerText, tX, tY);
         
-        tY += (60 * s);
-        CTX.font = `${30 * s}px Roboto`;
+        tY += (65 * s);
+        CTX.font = `${32 * s}px Roboto`;
         CTX.fillText(document.getElementById('disp-address').innerText.substring(0, 45), tX, tY);
 
-        tY += (50 * s);
-        CTX.font = `${26 * s}px monospace`;
+        tY += (55 * s);
+        CTX.font = `${28 * s}px monospace`;
         CTX.fillText(document.getElementById('disp-coords').innerText, tX, tY);
 
-        tY += (50 * s);
-        CTX.font = `bold ${28 * s}px Roboto`;
+        tY += (55 * s);
+        CTX.font = `bold ${30 * s}px Roboto`;
         CTX.fillStyle = "#FFD700";
         CTX.fillText(document.getElementById('disp-date').innerText, tX, tY);
 
